@@ -1,0 +1,221 @@
+﻿@page "/productos"
+
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.JSInterop
+@using System.Text.RegularExpressions
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<h3>Productos</h3>
+
+<button class="btn btn-primary mb-3" @onclick="NuevoProducto">Nuevo Producto</button>
+
+@if (productos == null)
+{
+    <p>Cargando...</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Precio</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var p in productos.Value.EnumerateArray())
+            {
+                var productoId = p.GetProperty("id").GetInt32();
+                <tr>
+                    <td>@p.GetProperty("nombre").GetString()</td>
+                    <td>@p.GetProperty("precio").GetDecimal()</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm me-2" @onclick="() => EditarProducto(p)">Editar</button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => EliminarProducto(productoId)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="card p-3 mb-3">
+        <h5>@(editarId.HasValue ? "Editar Producto" : "Nuevo Producto")</h5>
+        <div class="mb-2">
+            <label>Nombre:</label>
+            <input class="form-control"
+                   value="@Nombre"
+                   @oninput="OnNombreChanged" />
+        </div>
+        <div class="mb-2">
+            <label>Precio:</label>
+            <input class="form-control" type="number" step="0.01" min="0.01" max="99999999.99"
+                   value="@Precio"
+                   @oninput="OnPrecioChanged" />
+        </div>
+        <button class="btn btn-success me-2" @onclick="GuardarProducto">Guardar</button>
+        <button class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+    </div>
+}
+
+@code {
+    private JsonElement? productos;
+    private bool mostrarFormulario = false;
+    private int? editarId = null;
+    private string nombre = string.Empty;
+    private decimal precio;
+
+    // --- Nombre con validaciones ---
+    public string Nombre
+    {
+        get => nombre;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                nombre = string.Empty;
+                return;
+            }
+
+            // Trim inicio/fin y quitar espacios múltiples
+            var limpio = Regex.Replace(value.Trim(), @"\s+", " ");
+
+            // Convertir a mayúsculas
+            limpio = limpio.ToUpperInvariant();
+
+            // Limitar a 100 caracteres
+            if (limpio.Length > 100)
+                limpio = limpio.Substring(0, 100);
+
+            nombre = limpio;
+        }
+    }
+
+    private void OnNombreChanged(ChangeEventArgs e)
+    {
+        Nombre = e.Value?.ToString() ?? string.Empty;
+    }
+
+    // --- Precio con validaciones ---
+    public decimal Precio
+    {
+        get => precio;
+        set
+        {
+            if (value < 0.01m)
+                precio = 0.01m;
+            else if (value > 99999999.99m)
+                precio = 99999999.99m;
+            else
+                precio = Math.Round(value, 2); // máximo 2 decimales
+        }
+    }
+
+    private void OnPrecioChanged(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var val))
+        {
+            Precio = val;
+        }
+        else
+        {
+            Precio = 0; // valor inválido → resetea
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarProductos();
+    }
+
+    private async Task CargarProductos()
+    {
+        var response = await Http.GetAsync("productos");
+        response.EnsureSuccessStatusCode();
+
+        using var stream = await response.Content.ReadAsStreamAsync();
+        var doc = await JsonDocument.ParseAsync(stream);
+        productos = doc.RootElement;
+    }
+
+    private void NuevoProducto()
+    {
+        mostrarFormulario = true;
+        editarId = null;
+        nombre = string.Empty;
+        precio = 0;
+    }
+
+    private void EditarProducto(JsonElement p)
+    {
+        mostrarFormulario = true;
+        editarId = p.GetProperty("id").GetInt32();
+        Nombre = p.GetProperty("nombre").GetString() ?? string.Empty;
+        Precio = p.GetProperty("precio").GetDecimal();
+    }
+
+    private void Cancelar()
+    {
+        mostrarFormulario = false;
+        editarId = null;
+        nombre = string.Empty;
+        precio = 0;
+    }
+
+    private async Task GuardarProducto()
+    {
+        if (string.IsNullOrWhiteSpace(nombre)) return;
+
+        // --- Validación de nombre único ---
+        if (productos.HasValue)
+        {
+            var existe = productos.Value.EnumerateArray().Any(p =>
+            {
+                var id = p.GetProperty("id").GetInt32();
+                var nom = p.GetProperty("nombre").GetString() ?? "";
+                return nom.Equals(nombre, StringComparison.OrdinalIgnoreCase)
+                       && (!editarId.HasValue || editarId.Value != id);
+            });
+
+            if (existe)
+            {
+                await JS.InvokeVoidAsync("alert", $"El producto con nombre '{nombre}' ya existe.");
+                return;
+            }
+        }
+
+        var producto = new
+        {
+            nombre,
+            precio = Precio
+        };
+
+        if (editarId.HasValue)
+        {
+            await Http.PutAsJsonAsync($"productos/{editarId}", producto);
+        }
+        else
+        {
+            await Http.PostAsJsonAsync("productos", producto);
+        }
+
+        mostrarFormulario = false;
+        await CargarProductos();
+    }
+
+    private async Task EliminarProducto(int id)
+    {
+        var confirm = await JS.InvokeAsync<bool>("confirm", "¿Desea eliminar este producto?");
+        if (!confirm) return;
+
+        await Http.DeleteAsync($"productos/{id}");
+        await CargarProductos();
+    }
+}
