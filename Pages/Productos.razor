@@ -9,13 +9,18 @@
 @inject HttpClient Http
 @inject IJSRuntime JS
 
+<div class="mb-3">
+    <NavLink class="btn btn-secondary me-2" href="/">Volver al Home</NavLink>
+</div>
+
 <h3>Productos</h3>
 
-<button class="btn btn-primary mb-3" @onclick="NuevoProducto">Nuevo Producto</button>
+<button class="btn btn-primary mb-3 me-2" @onclick="NuevoProducto">Nuevo Producto</button>
+<button class="btn btn-info mb-3" @onclick="CargarProductos">Traer todos</button>
 
 @if (productos == null)
 {
-    <p>Cargando...</p>
+    <p>No se han cargado productos todavía.</p>
 }
 else
 {
@@ -50,7 +55,7 @@ else
         <h5>@(editarId.HasValue ? "Editar Producto" : "Nuevo Producto")</h5>
         <div class="mb-2">
             <label>Nombre:</label>
-            <input class="form-control"
+            <input class="form-control text-uppercase"
                    value="@Nombre"
                    @oninput="OnNombreChanged" />
         </div>
@@ -84,13 +89,8 @@ else
                 return;
             }
 
-            // Trim inicio/fin y quitar espacios múltiples
             var limpio = Regex.Replace(value.Trim(), @"\s+", " ");
-
-            // Convertir a mayúsculas
             limpio = limpio.ToUpperInvariant();
-
-            // Limitar a 100 caracteres
             if (limpio.Length > 100)
                 limpio = limpio.Substring(0, 100);
 
@@ -114,7 +114,7 @@ else
             else if (value > 99999999.99m)
                 precio = 99999999.99m;
             else
-                precio = Math.Round(value, 2); // máximo 2 decimales
+                precio = Math.Round(value, 2);
         }
     }
 
@@ -126,14 +126,15 @@ else
         }
         else
         {
-            Precio = 0; // valor inválido → resetea
+            Precio = 0;
         }
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        await CargarProductos();
-    }
+    // --- Ya no se carga al inicio ---
+    // protected override async Task OnInitializedAsync()
+    // {
+    //     await CargarProductos();
+    // }
 
     private async Task CargarProductos()
     {
@@ -173,7 +174,6 @@ else
     {
         if (string.IsNullOrWhiteSpace(nombre)) return;
 
-        // --- Validación de nombre único ---
         if (productos.HasValue)
         {
             var existe = productos.Value.EnumerateArray().Any(p =>

@@ -1,0 +1,275 @@
+﻿@page "/clientes"
+
+@using System.Net.Http
+@using System.Net.Http.Json
+@using System.Text.Json
+@using Microsoft.JSInterop
+@using System.Text.RegularExpressions
+
+@inject HttpClient Http
+@inject IJSRuntime JS
+
+<div class="mb-3">
+    <NavLink class="btn btn-secondary me-2" href="/">Volver al Home</NavLink>
+</div>
+
+<h3>Clientes</h3>
+
+<div class="mb-3">
+    <button class="btn btn-primary me-2" @onclick="CargarTodos">Traer Todos</button>
+</div>
+
+<div class="mb-3">
+    <input class="form-control" placeholder="Ingrese término de búsqueda" @bind="terminoBusqueda" />
+</div>
+
+<div class="mb-3">
+    <button class="btn btn-success me-2" @onclick="BuscarPorNombre">Buscar por Nombre</button>
+    <button class="btn btn-info me-2" @onclick="BuscarPorEmail">Buscar por Email</button>
+</div>
+
+<button class="btn btn-primary mb-3" @onclick="NuevoCliente">Nuevo Cliente</button>
+
+@if (clientes == null)
+{
+    <p>No hay clientes cargados.</p>
+}
+else if (clientes.Value.GetArrayLength() == 0)
+{
+    <p>No se encontraron clientes.</p>
+}
+else
+{
+    <table class="table table-striped">
+        <thead>
+            <tr>
+                <th>Nombre</th>
+                <th>Email</th>
+                <th>Acciones</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var c in clientes.Value.EnumerateArray())
+            {
+                var email = c.GetProperty("email").GetString()!;
+                <tr>
+                    <td>@c.GetProperty("nombre").GetString()</td>
+                    <td>@email</td>
+                    <td>
+                        <button class="btn btn-warning btn-sm me-2" @onclick="() => EditarCliente(c)">Editar</button>
+                        <button class="btn btn-danger btn-sm" @onclick="() => EliminarCliente(email)">Eliminar</button>
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (mostrarFormulario)
+{
+    <div class="card p-3 mb-3">
+        <h5>@(editarEmail != null ? "Editar Cliente" : "Nuevo Cliente")</h5>
+        <div class="mb-2">
+            <label>Nombre:</label>
+            <input class="form-control text-uppercase"
+                   @bind="Nombre"
+                   maxlength="50"
+                   @oninput="OnNombreChanged" />
+        </div>
+        <div class="mb-2">
+            <label>Email:</label>
+            <input class="form-control text-uppercase"
+                   type="email"
+                   @bind="Email"
+                   maxlength="50"
+                   @oninput="OnEmailChanged" />
+        </div>
+        <button class="btn btn-success me-2" @onclick="GuardarCliente">Guardar</button>
+        <button class="btn btn-secondary" @onclick="Cancelar">Cancelar</button>
+    </div>
+}
+
+@code {
+    private JsonElement? clientes;
+    private bool mostrarFormulario = false;
+    private string? editarEmail = null;
+    private string nombre = string.Empty;
+    private string email = string.Empty;
+    private string terminoBusqueda = string.Empty;
+
+    // --- Propiedades con validaciones ---
+    public string Nombre
+    {
+        get => nombre;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) { nombre = string.Empty; return; }
+
+            var limpio = Regex.Replace(value.Trim(), @"\s+", " ");
+            limpio = limpio.ToUpperInvariant();
+
+            if (limpio.Length > 50) limpio = limpio.Substring(0, 50);
+
+            nombre = limpio;
+        }
+    }
+
+    public string Email
+    {
+        get => email;
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value)) { email = string.Empty; return; }
+
+            var limpio = value.Trim().ToUpperInvariant();
+
+            if (limpio.Length > 50) limpio = limpio.Substring(0, 50);
+
+            email = limpio;
+        }
+    }
+
+    // --- Handlers para uppercase en tiempo real ---
+    private void OnNombreChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
+        Nombre = valor;
+    }
+
+    private void OnEmailChanged(ChangeEventArgs e)
+    {
+        var valor = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
+        Email = valor;
+    }
+
+    // --- Formulario ---
+    private void NuevoCliente()
+    {
+        mostrarFormulario = true;
+        editarEmail = null;
+        Nombre = string.Empty;
+        Email = string.Empty;
+    }
+
+    private void EditarCliente(JsonElement c)
+    {
+        mostrarFormulario = true;
+        editarEmail = c.GetProperty("email").GetString();
+        Nombre = c.GetProperty("nombre").GetString() ?? string.Empty;
+        Email = editarEmail!;
+    }
+
+    private void Cancelar()
+    {
+        mostrarFormulario = false;
+        editarEmail = null;
+        Nombre = string.Empty;
+        Email = string.Empty;
+    }
+
+    // --- Guardar Cliente ---
+    private async Task GuardarCliente()
+    {
+        if (string.IsNullOrWhiteSpace(Nombre) || string.IsNullOrWhiteSpace(Email))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe completar todos los campos.");
+            return;
+        }
+
+        // Validación formato email
+        if (!Regex.IsMatch(Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
+        {
+            await JS.InvokeVoidAsync("alert", "El email ingresado no es válido.");
+            return;
+        }
+
+        if (clientes.HasValue)
+        {
+            var existe = clientes.Value.EnumerateArray().Any(c =>
+            {
+                var e = c.GetProperty("email").GetString();
+                return e != null && e.Equals(Email, StringComparison.OrdinalIgnoreCase)
+                       && (editarEmail == null || editarEmail != e);
+            });
+
+            if (existe)
+            {
+                await JS.InvokeVoidAsync("alert", $"El cliente con email '{Email}' ya existe.");
+                return;
+            }
+        }
+
+        var cliente = new { nombre = Nombre, email = Email };
+
+        if (editarEmail != null)
+        {
+            // Editar cliente (email también puede cambiar)
+            await Http.PutAsJsonAsync($"clientes/by-email/{editarEmail}", cliente);
+        }
+        else
+        {
+            // Nuevo cliente
+            await Http.PostAsJsonAsync("clientes", cliente);
+        }
+
+        mostrarFormulario = false;
+        await CargarTodos();
+    }
+
+    // --- Eliminar Cliente ---
+    private async Task EliminarCliente(string email)
+    {
+        var confirm = await JS.InvokeAsync<bool>("confirm", "¿Desea eliminar este cliente?");
+        if (!confirm) return;
+
+        await Http.DeleteAsync($"clientes/by-email/{email}");
+        await CargarTodos();
+    }
+
+    // --- Traer todos ---
+    private async Task CargarTodos()
+    {
+        var response = await Http.GetAsync("clientes");
+        response.EnsureSuccessStatusCode();
+        using var stream = await response.Content.ReadAsStreamAsync();
+        var doc = await JsonDocument.ParseAsync(stream);
+        clientes = doc.RootElement;
+    }
+
+    // --- Buscar por nombre/email ---
+    private async Task BuscarPorNombre() => await BuscarPor("nombre");
+    private async Task BuscarPorEmail() => await BuscarPor("email");
+
+    private async Task BuscarPor(string tipo)
+    {
+        if (string.IsNullOrWhiteSpace(terminoBusqueda)) return;
+
+        string url = tipo switch
+        {
+            "nombre" => $"clientes/search/{terminoBusqueda}",
+            "email" => $"clientes/by-email/{terminoBusqueda}",
+            _ => "clientes"
+        };
+
+        var response = await Http.GetAsync(url);
+        if (!response.IsSuccessStatusCode)
+        {
+            clientes = JsonDocument.Parse("[]").RootElement;
+            return;
+        }
+
+        using var stream = await response.Content.ReadAsStreamAsync();
+        var doc = await JsonDocument.ParseAsync(stream);
+
+        // Si buscamos por email devuelve un solo objeto, lo convertimos a array
+        if (tipo == "email")
+        {
+            var arrayDoc = JsonDocument.Parse($"[{doc.RootElement.GetRawText()}]");
+            clientes = arrayDoc.RootElement;
+        }
+        else
+        {
+            clientes = doc.RootElement;
+        }
+    }
+}
