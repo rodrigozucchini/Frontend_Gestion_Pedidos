@@ -229,7 +229,7 @@ else
     // --- Traer todos ---
     private async Task CargarTodos()
     {
-        var response = await Http.GetAsync("clientes");
+        var response = await Http.GetAsync("clientes/search");
         response.EnsureSuccessStatusCode();
         using var stream = await response.Content.ReadAsStreamAsync();
         var doc = await JsonDocument.ParseAsync(stream);
