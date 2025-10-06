@@ -10,7 +10,7 @@
 <h3>Gestión de Pedidos</h3>
 
 <div class="mb-3">
-    <button class="btn btn-warning me-2" @onclick="CargarPedidos">Baja/Modificación</button>
+    <button class="btn btn-warning me-2" @onclick="CargarPedidos">Actualizaciones de Pedidos</button>
 </div>
 
 @if (pedidos is null)
@@ -42,18 +42,61 @@ else
                     <td>@p.NumeroPedido</td>
                     <td>@p.NombreCliente</td>
                     <td>@p.EmailCliente</td>
-                    <td>@p.Estado</td>
+                    <td>
+                        @if (pedidoEnEdicion == p.NumeroPedido)
+                        {
+                            <select class="form-select form-select-sm" @bind="estadoTemporal">
+                                <option value="Pendiente">Pendiente</option>
+                                <option value="Cerrado">Cerrado</option>
+                                <option value="Anulado">Anulado</option>
+                            </select>
+                        }
+                        else
+                        {
+                            @p.Estado
+                        }
+                    </td>
                     <td>@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
                     <td>@p.Total</td>
                     <td>
-                        <button class="btn btn-primary btn-sm me-2" @onclick="() => ModificarCabecera(p.NumeroPedido)">Modificar Cabecera</button>
-                        <button class="btn btn-secondary btn-sm me-2" @onclick="() => MostrarDetalles(p.NumeroPedido)">Mostrar Detalles</button>
-                        <button class="btn btn-danger btn-sm me-2" @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">Eliminar Cabecera</button>
+                        @if (pedidoEnEdicion == p.NumeroPedido)
+                        {
+                            <button class="btn btn-success btn-sm me-2" @onclick="() => GuardarEstado(p)">Guardar</button>
+                            <button class="btn btn-secondary btn-sm" @onclick="CancelarEdicion">Cancelar</button>
+                        }
+                        else
+                        {
+                            <button class="btn btn-primary btn-sm me-2" @onclick="() => ModificarCabecera(p)">
+                                Modificar Cabecera
+                            </button>
 
-                        <div class="mt-2">
-                            <input type="number" class="form-control form-control-sm" placeholder="N° detalle" @bind="numeroDetalleEliminar" />
-                            <button class="btn btn-outline-danger btn-sm mt-1" @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">Eliminar Detalle</button>
-                        </div>
+                            @if (p.Estado.Equals("Pendiente", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <button class="btn btn-secondary btn-sm me-2" @onclick="() => MostrarDetalles(p.NumeroPedido)">
+                                    Mostrar Detalles
+                                </button>
+                            }
+                            else
+                            {
+                                <button class="btn btn-secondary btn-sm me-2" disabled style="opacity:0.6; cursor:not-allowed;">
+                                    Mostrar Detalles
+                                </button>
+                            }
+
+                            <button class="btn btn-danger btn-sm me-2" @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">
+                                Eliminar Cabecera
+                            </button>
+
+                            <div class="mt-2">
+                                <input type="number" class="form-control form-control-sm" min="1"
+                                       placeholder="N° detalle"
+                                       @bind="numeroDetalleEliminarPorPedido[p.NumeroPedido]" />
+                                <button class="btn btn-outline-danger btn-sm mt-1"
+                                        @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">
+                                    Eliminar Detalle
+                                </button>
+                            </div>
+                        }
                     </td>
                 </tr>
             }
@@ -67,6 +110,7 @@ else
     <table class="table table-bordered">
         <thead>
             <tr>
+                <th>N° Detalle</th>
                 <th>Producto</th>
                 <th>Cantidad</th>
                 <th>Precio Unitario</th>
@@ -77,9 +121,12 @@ else
             @foreach (var d in detallePedido)
             {
                 <tr>
+                    <td>@d.NumeroDetalle</td>
                     <td>@d.Producto</td>
                     <td>
-                        <input type="number" class="form-control" min="1" @bind="d.Cantidad" @bind:event="oninput" @onchange="(_) => RecalcularSubtotal(d)" />
+                        <input type="number" class="form-control" min="1"
+                               @bind="d.Cantidad" @bind:event="oninput"
+                               @onchange="(_) => RecalcularSubtotal(d)" />
                     </td>
                     <td>@d.PrecioUnitario</td>
                     <td>@d.Subtotal</td>
@@ -87,6 +134,8 @@ else
             }
         </tbody>
     </table>
+
+    <button class="btn btn-success me-2" @onclick="GuardarCambiosDetalle">Guardar cambios</button>
 }
 
 @code {
@@ -94,13 +143,21 @@ else
     private List<DetallePedido> detallePedido = new();
     private bool mostrarFormularioDetalle = false;
     private string numeroPedidoSeleccionado = string.Empty;
-    private int numeroDetalleEliminar;
 
+    // 🔧 nuevo: número de detalle separado por pedido
+    private Dictionary<string, int> numeroDetalleEliminarPorPedido = new();
+
+    private string pedidoEnEdicion = string.Empty;
+    private string estadoTemporal = string.Empty;
+
+    // --- Cargar pedidos ---
     private async Task CargarPedidos()
     {
         try
         {
             pedidos = await Http.GetFromJsonAsync<List<PedidoCabecera>>("pedidos/cabeceras") ?? new();
+            // Inicializar los campos de detalle
+            numeroDetalleEliminarPorPedido = pedidos.ToDictionary(p => p.NumeroPedido, p => 0);
         }
         catch (Exception ex)
         {
@@ -108,12 +165,41 @@ else
         }
     }
 
-    private void ModificarCabecera(string numeroPedido)
+    // --- Modificar cabecera ---
+    private void ModificarCabecera(PedidoCabecera pedido)
     {
-        numeroPedidoSeleccionado = numeroPedido;
-        // aquí puedes abrir tu formulario de modificar estado si lo tienes
+        pedidoEnEdicion = pedido.NumeroPedido;
+        estadoTemporal = pedido.Estado;
     }
 
+    private void CancelarEdicion() => pedidoEnEdicion = string.Empty;
+
+    private async Task GuardarEstado(PedidoCabecera pedido)
+    {
+        try
+        {
+            var body = new { estado = estadoTemporal };
+
+            var response = await Http.PutAsJsonAsync($"pedidos/cabeceras/{pedido.NumeroPedido}", body);
+            if (response.IsSuccessStatusCode)
+            {
+                pedido.Estado = estadoTemporal;
+                pedidoEnEdicion = string.Empty;
+                await JS.InvokeVoidAsync("alert", "Estado actualizado correctamente.");
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al actualizar estado: {msg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    // --- Mostrar detalles ---
     private async Task MostrarDetalles(string numeroPedido)
     {
         numeroPedidoSeleccionado = numeroPedido;
@@ -129,12 +215,46 @@ else
         }
     }
 
+    // --- Recalcular subtotal ---
     private void RecalcularSubtotal(DetallePedido d)
     {
+        if (d.Cantidad < 1)
+            d.Cantidad = 1;
+
         d.Subtotal = d.Cantidad * d.PrecioUnitario;
     }
 
-    // --- Confirmación y eliminación de cabecera ---
+    // --- Guardar cambios de detalle ---
+    private async Task GuardarCambiosDetalle()
+    {
+        try
+        {
+            foreach (var d in detallePedido)
+            {
+                if (d.Cantidad < 1)
+                    d.Cantidad = 1;
+
+                var dto = new { cantidad = d.Cantidad, precioUnitario = d.PrecioUnitario };
+                await Http.PutAsJsonAsync($"pedidos/{numeroPedidoSeleccionado}/detalles/{d.NumeroDetalle}", dto);
+            }
+
+            var totalActualizado = detallePedido.Sum(x => x.Subtotal);
+
+            var pedido = pedidos.FirstOrDefault(p => p.NumeroPedido == numeroPedidoSeleccionado);
+            if (pedido != null)
+                pedido.Total = totalActualizado;
+
+            await JS.InvokeVoidAsync("alert", "Cambios guardados correctamente.");
+            await MostrarDetalles(numeroPedidoSeleccionado);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al guardar cambios: {ex.Message}");
+        }
+    }
+
+    // --- Eliminar cabecera ---
     private async Task ConfirmarEliminarCabecera(string numeroPedido)
     {
         if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea eliminar la cabecera {numeroPedido}?"))
@@ -147,12 +267,13 @@ else
     {
         try
         {
-            var response = await Http.DeleteAsync($"pedidos/{numeroPedido}");
+            var response = await Http.DeleteAsync($"pedidos/cabeceras/{numeroPedido}");
             if (response.IsSuccessStatusCode)
             {
                 pedidos.RemoveAll(p => p.NumeroPedido == numeroPedido);
                 detallePedido.Clear();
                 mostrarFormularioDetalle = false;
+                await JS.InvokeVoidAsync("alert", "Cabecera eliminada correctamente.");
             }
         }
         catch (Exception ex)
@@ -161,18 +282,25 @@ else
         }
     }
 
-    // --- Confirmación y eliminación de detalle ---
+    // --- Eliminar detalle ---
     private async Task ConfirmarEliminarDetalle(string numeroPedido)
     {
-        if (numeroDetalleEliminar <= 0)
+        if (!numeroDetalleEliminarPorPedido.TryGetValue(numeroPedido, out var numeroDetalle) || numeroDetalle <= 0)
         {
             await JS.InvokeVoidAsync("alert", "Ingrese un número de detalle válido.");
             return;
         }
 
-        if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea eliminar el detalle {numeroDetalleEliminar}?"))
+        if (!detallePedido.Any(d => d.NumeroDetalle == numeroDetalle))
         {
-            await EliminarDetalle(numeroPedido, numeroDetalleEliminar);
+            await JS.InvokeVoidAsync("alert", $"El detalle {numeroDetalle} no existe en este pedido.");
+            return;
+        }
+
+        if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea eliminar el detalle {numeroDetalle}?"))
+        {
+            await EliminarDetalle(numeroPedido, numeroDetalle);
+            StateHasChanged();
         }
     }
 
@@ -184,7 +312,9 @@ else
             if (response.IsSuccessStatusCode)
             {
                 detallePedido.RemoveAll(d => d.NumeroDetalle == numeroDetalle);
-                await MostrarDetalles(numeroPedido); // refresca los detalles
+                await CargarPedidos();
+                await MostrarDetalles(numeroPedido);
+                await JS.InvokeVoidAsync("alert", "Detalle eliminado correctamente.");
             }
         }
         catch (Exception ex)
@@ -193,6 +323,7 @@ else
         }
     }
 
+    // --- Clases ---
     public class PedidoCabecera
     {
         public string NumeroPedido { get; set; } = string.Empty;
