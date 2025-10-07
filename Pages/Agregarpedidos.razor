@@ -1,0 +1,187 @@
+﻿@page "/pedidos/agregar"
+@using System.Net.Http.Json
+@inject HttpClient Http
+@inject IJSRuntime JS
+@inject NavigationManager Nav
+
+<h3>Crear nuevo Pedido</h3>
+
+<div class="mb-3">
+    <NavLink class="btn btn-secondary me-2" href="/pedidos">Volver a Pedidos</NavLink>
+</div>
+
+@if (clientes is null || productos is null)
+{
+    <p>Cargando datos...</p>
+}
+else
+{
+    <div class="card p-4 shadow-sm">
+
+        <div class="mb-3">
+            <label class="form-label">Cliente</label>
+            <select class="form-select" @bind="emailClienteSeleccionado">
+                <option value="">Seleccione un cliente</option>
+                @foreach (var c in clientes)
+                {
+                    <option value="@c.Email">@c.Nombre (@c.Email)</option>
+                }
+            </select>
+        </div>
+
+        <h5>Detalles del Pedido</h5>
+        <div class="border rounded p-3 mb-3 bg-light">
+            @foreach (var detalle in detalles)
+            {
+                <div class="d-flex align-items-center mb-2">
+                    <select class="form-select me-2" style="width: 40%;" @bind="detalle.ProductoId">
+                        <option value="0">Seleccione un producto</option>
+                        @foreach (var p in productos)
+                        {
+                            var yaSeleccionado = detalles.Any(d => d != detalle && d.ProductoId == p.Id);
+                            <option value="@p.Id" disabled="@yaSeleccionado">
+                                @p.Nombre - $@p.Precio
+                                @(yaSeleccionado ? " (ya elegido)" : "")
+                            </option>
+                        }
+                    </select>
+
+                    <input type="number" class="form-control me-2" style="width: 20%;"
+                           min="1" max="1000" @bind="detalle.Cantidad" />
+
+                    <button class="btn btn-danger btn-sm" @onclick="(() => QuitarDetalle(detalle))">Eliminar</button>
+                </div>
+            }
+
+            <button class="btn btn-outline-primary btn-sm mt-2" @onclick="AgregarDetalle">+ Agregar otro producto</button>
+        </div>
+
+        <button class="btn btn-success" @onclick="CrearPedido">Crear Pedido</button>
+    </div>
+}
+
+@code {
+    private List<Cliente> clientes = new();
+    private List<Producto> productos = new();
+
+    private string emailClienteSeleccionado = string.Empty;
+    private List<DetallePedido> detalles = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await CargarClientes();
+        await CargarProductos();
+        detalles.Add(new DetallePedido()); // Un detalle por defecto
+    }
+
+    private async Task CargarClientes()
+    {
+        try
+        {
+            clientes = await Http.GetFromJsonAsync<List<Cliente>>("clientes/search") ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar clientes: {ex.Message}");
+        }
+    }
+
+    private async Task CargarProductos()
+    {
+        try
+        {
+            productos = await Http.GetFromJsonAsync<List<Producto>>("productos") ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar productos: {ex.Message}");
+        }
+    }
+
+    private void AgregarDetalle()
+    {
+        // No permitir más detalles que productos disponibles
+        if (detalles.Count >= productos.Count)
+        {
+            JS.InvokeVoidAsync("alert", "Ya se seleccionaron todos los productos disponibles.");
+            return;
+        }
+
+        detalles.Add(new DetallePedido());
+    }
+
+    private void QuitarDetalle(DetallePedido detalle)
+    {
+        detalles.Remove(detalle);
+    }
+
+    private async Task CrearPedido()
+    {
+        if (string.IsNullOrWhiteSpace(emailClienteSeleccionado))
+        {
+            await JS.InvokeVoidAsync("alert", "Debe seleccionar un cliente.");
+            return;
+        }
+
+        if (detalles.Count == 0 || detalles.Any(d => d.ProductoId == 0))
+        {
+            await JS.InvokeVoidAsync("alert", "Seleccione un producto en cada detalle.");
+            return;
+        }
+
+        if (detalles.Any(d => d.Cantidad < 1 || d.Cantidad > 1000))
+        {
+            await JS.InvokeVoidAsync("alert", "Las cantidades deben ser mayores o iguales a 1 y menores o iguales a 1000.");
+            return;
+        }
+
+        var nuevoPedido = new
+        {
+            emailCliente = emailClienteSeleccionado,
+            detalles = detalles.Select(d => new
+            {
+                productoId = d.ProductoId,
+                cantidad = d.Cantidad
+            }).ToList()
+        };
+
+        try
+        {
+            var response = await Http.PostAsJsonAsync("pedidos/create", nuevoPedido);
+            if (response.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("alert", "Pedido creado correctamente.");
+                Nav.NavigateTo("/pedidos", forceLoad: true);
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al crear pedido: {msg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+        }
+    }
+
+    // --- Clases auxiliares ---
+    public class Cliente
+    {
+        public string Nombre { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+    }
+
+    public class Producto
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public decimal Precio { get; set; }
+    }
+
+    public class DetallePedido
+    {
+        public int ProductoId { get; set; }
+        public int Cantidad { get; set; } = 1;
+    }
+}
