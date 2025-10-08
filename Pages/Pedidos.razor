@@ -48,8 +48,8 @@ else
                         {
                             <select class="form-select form-select-sm" @bind="estadoTemporal">
                                 <option value="Pendiente">Pendiente</option>
-                                <option value="Cerrado">Cerrado</option>
-                                <option value="Anulado">Anulado</option>
+                                <option value="Cancelado">Cancelado</option>
+                                <option value="Completado">Completado</option>
                             </select>
                         }
                         else
@@ -129,8 +129,8 @@ else
                                @bind="d.Cantidad" @bind:event="oninput"
                                @onchange="(_) => RecalcularSubtotal(d)" />
                     </td>
-                    <td>@d.PrecioUnitario</td>
-                    <td>@d.Subtotal</td>
+                    <td>@d.PrecioUnitario.ToString("0.00")</td>  
+                    <td>@d.Subtotal.ToString("0.00")</td>      
                 </tr>
             }
         </tbody>
@@ -162,7 +162,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al cargar pedidos: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al cargar pedidos: {ex.Message}, la api no esta en funcionamiento");
         }
     }
 
@@ -187,6 +187,7 @@ else
                 pedido.Estado = estadoTemporal;
                 pedidoEnEdicion = string.Empty;
                 await JS.InvokeVoidAsync("alert", "Estado actualizado correctamente.");
+                await CargarPedidos();
             }
             else
             {
@@ -196,7 +197,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -212,15 +213,23 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al obtener detalles: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al obtener detalles: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
     // --- Recalcular subtotal ---
-    private void RecalcularSubtotal(DetallePedido d)
+    private async void RecalcularSubtotal(DetallePedido d)
     {
         if (d.Cantidad < 1)
+        {
             d.Cantidad = 1;
+            await JS.InvokeVoidAsync("alert", "La cantidad mínima es 1.");
+        }
+        else if (d.Cantidad > 1000)
+        {
+            d.Cantidad = 1000;
+            await JS.InvokeVoidAsync("alert", "La cantidad máxima es 1000.");
+        }
 
         d.Subtotal = d.Cantidad * d.PrecioUnitario;
     }
@@ -251,7 +260,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al guardar cambios: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al guardar cambios: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -279,7 +288,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al eliminar cabecera: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar cabecera: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -320,7 +329,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 

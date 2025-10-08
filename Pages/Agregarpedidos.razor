@@ -82,7 +82,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al cargar clientes: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al cargar clientes: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -94,16 +94,23 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al cargar productos: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error al cargar productos: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
-    private void AgregarDetalle()
+    private async void AgregarDetalle()
     {
+        // Verificar si hay productos cargados
+        if (productos == null || productos.Count == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "No hay productos disponibles. Verifique la conexión con el servidor.");
+            return;
+        }
+
         // No permitir más detalles que productos disponibles
         if (detalles.Count >= productos.Count)
         {
-            JS.InvokeVoidAsync("alert", "Ya se seleccionaron todos los productos disponibles.");
+            await JS.InvokeVoidAsync("alert", "Ya se seleccionaron todos los productos disponibles.");
             return;
         }
 
@@ -161,7 +168,7 @@ else
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}");
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
