@@ -30,7 +30,11 @@
 
 <button class="btn btn-primary mb-3" @onclick="NuevoCliente">Nuevo Cliente</button>
 
-@if (clientes == null)
+@if (errorMensaje != null)
+{
+    <div class="alert alert-danger">@errorMensaje</div>
+}
+else if (clientes == null)
 {
     <p>No hay clientes cargados.</p>
 }
@@ -96,6 +100,7 @@ else
     private string nombre = string.Empty;
     private string email = string.Empty;
     private string terminoBusqueda = string.Empty;
+    private string? errorMensaje = null;
 
     // --- Propiedades con validaciones ---
     public string Nombre
@@ -104,13 +109,8 @@ else
         set
         {
             if (string.IsNullOrWhiteSpace(value)) { nombre = string.Empty; return; }
-
-            var limpio = Regex.Replace(value.Trim(), @"\s+", " ");
-            limpio = limpio.ToUpperInvariant();
-
-            if (limpio.Length > 50) limpio = limpio.Substring(0, 50);
-
-            nombre = limpio;
+            var limpio = Regex.Replace(value.Trim(), @"\s+", " ").ToUpperInvariant();
+            nombre = limpio.Length > 50 ? limpio[..50] : limpio;
         }
     }
 
@@ -120,27 +120,16 @@ else
         set
         {
             if (string.IsNullOrWhiteSpace(value)) { email = string.Empty; return; }
-
             var limpio = value.Trim().ToUpperInvariant();
-
-            if (limpio.Length > 50) limpio = limpio.Substring(0, 50);
-
-            email = limpio;
+            email = limpio.Length > 50 ? limpio[..50] : limpio;
         }
     }
 
-    // --- Handlers para uppercase en tiempo real ---
-    private void OnNombreChanged(ChangeEventArgs e)
-    {
-        var valor = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
-        Nombre = valor;
-    }
+    private void OnNombreChanged(ChangeEventArgs e) =>
+        Nombre = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
 
-    private void OnEmailChanged(ChangeEventArgs e)
-    {
-        var valor = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
-        Email = valor;
-    }
+    private void OnEmailChanged(ChangeEventArgs e) =>
+        Email = e.Value?.ToString()?.ToUpperInvariant() ?? string.Empty;
 
     // --- Formulario ---
     private void NuevoCliente()
@@ -176,44 +165,36 @@ else
             return;
         }
 
-        // Validación formato email
         if (!Regex.IsMatch(Email, @"^[^@\s]+@[^@\s]+\.[^@\s]+$"))
         {
             await JS.InvokeVoidAsync("alert", "El email ingresado no es válido.");
             return;
         }
 
-        if (clientes.HasValue)
+        try
         {
-            var existe = clientes.Value.EnumerateArray().Any(c =>
-            {
-                var e = c.GetProperty("email").GetString();
-                return e != null && e.Equals(Email, StringComparison.OrdinalIgnoreCase)
-                       && (editarEmail == null || editarEmail != e);
-            });
+            var cliente = new { nombre = Nombre, email = Email };
 
-            if (existe)
+            HttpResponseMessage response;
+            if (editarEmail != null)
+                response = await Http.PutAsJsonAsync($"clientes/by-email/{editarEmail}", cliente);
+            else
+                response = await Http.PostAsJsonAsync("clientes/create", cliente);
+
+            if (!response.IsSuccessStatusCode)
             {
-                await JS.InvokeVoidAsync("alert", $"El cliente con email '{Email}' ya existe.");
+                var msg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al guardar cliente: {msg}");
                 return;
             }
+
+            mostrarFormulario = false;
+            await CargarTodos();
         }
-
-        var cliente = new { nombre = Nombre, email = Email };
-
-        if (editarEmail != null)
+        catch (Exception ex)
         {
-            // Editar cliente (email también puede cambiar)
-            await Http.PutAsJsonAsync($"clientes/by-email/{editarEmail}", cliente);
+            await JS.InvokeVoidAsync("alert", $"Error al conectar con la API: {ex.Message}, es posible que la API no este en funcionamiento");
         }
-        else
-        {
-            // Nuevo cliente
-            await Http.PostAsJsonAsync("clientes/create", cliente);
-        }
-
-        mostrarFormulario = false;
-        await CargarTodos();
     }
 
     // --- Eliminar Cliente ---
@@ -222,18 +203,49 @@ else
         var confirm = await JS.InvokeAsync<bool>("confirm", "¿Desea eliminar este cliente?");
         if (!confirm) return;
 
-        await Http.DeleteAsync($"clientes/by-email/{email}");
-        await CargarTodos();
+        try
+        {
+            var response = await Http.DeleteAsync($"clientes/by-email/{email}");
+            if (!response.IsSuccessStatusCode)
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al eliminar cliente: {msg}");
+            }
+            else
+            {
+                await CargarTodos();
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al conectar con la API: {ex.Message}, es posible que la API no este en funcionamiento");
+        }
     }
 
-    // --- Traer todos ---
+    // --- Cargar todos ---
     private async Task CargarTodos()
     {
-        var response = await Http.GetAsync("clientes/search");
-        response.EnsureSuccessStatusCode();
-        using var stream = await response.Content.ReadAsStreamAsync();
-        var doc = await JsonDocument.ParseAsync(stream);
-        clientes = doc.RootElement;
+        try
+        {
+            var response = await Http.GetAsync("clientes/search");
+
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMensaje = $"No se pudo cargar la lista de clientes (HTTP {response.StatusCode}).";
+                clientes = JsonDocument.Parse("[]").RootElement;
+                return;
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            var doc = await JsonDocument.ParseAsync(stream);
+            clientes = doc.RootElement;
+            errorMensaje = null;
+        }
+        catch (Exception ex)
+        {
+            errorMensaje = $"Error al conectarse con la API: {ex.Message}, es posible que la API no este en funcionamiento";
+            clientes = JsonDocument.Parse("[]").RootElement;
+        }
     }
 
     // --- Buscar por nombre/email ---
@@ -242,34 +254,48 @@ else
 
     private async Task BuscarPor(string tipo)
     {
-        if (string.IsNullOrWhiteSpace(terminoBusqueda)) return;
-
-        string url = tipo switch
+        if (string.IsNullOrWhiteSpace(terminoBusqueda))
         {
-            "nombre" => $"clientes/search-name/{terminoBusqueda}",
-            "email" => $"clientes/search-email/{terminoBusqueda}",
-            _ => "clientes"
-        };
-
-        var response = await Http.GetAsync(url);
-        if (!response.IsSuccessStatusCode)
-        {
-            clientes = JsonDocument.Parse("[]").RootElement;
+            await JS.InvokeVoidAsync("alert", "Ingrese un término de búsqueda.");
             return;
         }
 
-        using var stream = await response.Content.ReadAsStreamAsync();
-        var doc = await JsonDocument.ParseAsync(stream);
+        try
+        {
+            string url = tipo switch
+            {
+                "nombre" => $"clientes/search-name/{terminoBusqueda}",
+                "email" => $"clientes/search-email/{terminoBusqueda}",
+                _ => "clientes/search"
+            };
 
-        // Si buscamos por email devuelve un solo objeto, lo convertimos a array
-        if (tipo == "email")
-        {
-            var arrayDoc = JsonDocument.Parse($"[{doc.RootElement.GetRawText()}]");
-            clientes = arrayDoc.RootElement;
+            var response = await Http.GetAsync(url);
+            if (!response.IsSuccessStatusCode)
+            {
+                errorMensaje = $"Error al buscar clientes ({response.StatusCode}).";
+                clientes = JsonDocument.Parse("[]").RootElement;
+                return;
+            }
+
+            using var stream = await response.Content.ReadAsStreamAsync();
+            var doc = await JsonDocument.ParseAsync(stream);
+
+            if (tipo == "email" && doc.RootElement.ValueKind == JsonValueKind.Object)
+            {
+                var arrayDoc = JsonDocument.Parse($"[{doc.RootElement.GetRawText()}]");
+                clientes = arrayDoc.RootElement;
+            }
+            else
+            {
+                clientes = doc.RootElement;
+            }
+
+            errorMensaje = null;
         }
-        else
+        catch (Exception ex)
         {
-            clientes = doc.RootElement;
+            errorMensaje = $"Error al buscar: {ex.Message}, es posible que la API no este en funcionamiento";
+            clientes = JsonDocument.Parse("[]").RootElement;
         }
     }
 }

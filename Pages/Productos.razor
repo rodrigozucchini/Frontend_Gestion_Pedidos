@@ -57,6 +57,7 @@ else
             <label>Nombre:</label>
             <input class="form-control text-uppercase"
                    value="@Nombre"
+                   maxlength="100"
                    @oninput="OnNombreChanged" />
         </div>
         <div class="mb-2">
@@ -138,12 +139,26 @@ else
 
     private async Task CargarProductos()
     {
-        var response = await Http.GetAsync("productos");
-        response.EnsureSuccessStatusCode();
+        try
+        {
+            var response = await Http.GetAsync("productos");
 
-        using var stream = await response.Content.ReadAsStreamAsync();
-        var doc = await JsonDocument.ParseAsync(stream);
-        productos = doc.RootElement;
+            if (response.IsSuccessStatusCode)
+            {
+                using var stream = await response.Content.ReadAsStreamAsync();
+                var doc = await JsonDocument.ParseAsync(stream);
+                productos = doc.RootElement;
+            }
+            else
+            {
+                var errorMsg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al obtener productos: {errorMsg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al conectarse con la API: {ex.Message}, esto quiere decir que la api no funciona en este momento");
+        }
     }
 
     private void NuevoProducto()
@@ -172,8 +187,31 @@ else
 
     private async Task GuardarProducto()
     {
-        if (string.IsNullOrWhiteSpace(nombre)) return;
+        if (string.IsNullOrWhiteSpace(nombre))
+        {
+            await JS.InvokeVoidAsync("alert", "El nombre es obligatorio.");
+            return;
+        }
 
+        if (nombre.Length > 100)
+        {
+            await JS.InvokeVoidAsync("alert", "El nombre no puede superar los 100 caracteres.");
+            return;
+        }
+
+        if (Precio <= 0)
+        {
+            await JS.InvokeVoidAsync("alert", "El precio debe ser mayor que 0.01.");
+            return;
+        }
+
+        if (Precio > 99999999.99m)
+        {
+            await JS.InvokeVoidAsync("alert", "El precio está fuera de rango (máx: 99,999,999.99).");
+            return;
+        }
+
+        // 🔹 Validar duplicado localmente
         if (productos.HasValue)
         {
             var existe = productos.Value.EnumerateArray().Any(p =>
@@ -186,28 +224,36 @@ else
 
             if (existe)
             {
-                await JS.InvokeVoidAsync("alert", $"El producto con nombre '{nombre}' ya existe.");
+                await JS.InvokeVoidAsync("alert", $"El producto '{nombre}' ya existe.");
                 return;
             }
         }
 
-        var producto = new
-        {
-            nombre,
-            precio = Precio
-        };
+        var producto = new { nombre, precio = Precio };
+        HttpResponseMessage response;
 
-        if (editarId.HasValue)
+        try
         {
-            await Http.PutAsJsonAsync($"productos/{editarId}", producto);
-        }
-        else
-        {
-            await Http.PostAsJsonAsync("productos", producto);
-        }
+            if (editarId.HasValue)
+                response = await Http.PutAsJsonAsync($"productos/{editarId}", producto);
+            else
+                response = await Http.PostAsJsonAsync("productos", producto);
 
-        mostrarFormulario = false;
-        await CargarProductos();
+            if (response.IsSuccessStatusCode)
+            {
+                mostrarFormulario = false;
+                await CargarProductos();
+            }
+            else
+            {
+                var errorMsg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al guardar producto: {errorMsg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error inesperado: {ex.Message}, esto quiere decir que la api no esta en funcionamiento");
+        }
     }
 
     private async Task EliminarProducto(int id)
@@ -215,7 +261,23 @@ else
         var confirm = await JS.InvokeAsync<bool>("confirm", "¿Desea eliminar este producto?");
         if (!confirm) return;
 
-        await Http.DeleteAsync($"productos/{id}");
-        await CargarProductos();
+        try
+        {
+            var response = await Http.DeleteAsync($"productos/{id}");
+
+            if (response.IsSuccessStatusCode)
+            {
+                await CargarProductos();
+            }
+            else
+            {
+                var errorMsg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al eliminar producto: {errorMsg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}, esto quiere decir que la API no esta en funcionamiento");
+        }
     }
 }
