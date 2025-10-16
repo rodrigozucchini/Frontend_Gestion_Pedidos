@@ -10,159 +10,314 @@
 <h3>Gestión de Pedidos</h3>
 
 <div class="mb-3">
-    <button class="btn btn-warning me-2" @onclick="CargarPedidos">Actualizaciones de Pedidos</button>
+    <button class="btn btn-warning me-2" @onclick="ModoActualizacion">Actualizaciones de Pedidos</button>
+    <button class="btn btn-info me-2" @onclick="ModoListar">Listar Pedidos</button>
     <NavLink class="btn btn-warning me-2" href="/pedidos/agregar">Agregar pedidos</NavLink>
 </div>
 
-@if (pedidos is null)
+@if (vistaActual == "actualizacion")
 {
-    <p>No hay pedidos cargados.</p>
+    @if (pedidos is null)
+    {
+        <p>No hay pedidos cargados.</p>
+    }
+    else if (!pedidos.Any())
+    {
+        <p>No se encontraron pedidos.</p>
+    }
+    else
+    {
+        <div style="overflow-x: auto;">
+            <table class="table table-striped table-sm" style="white-space: nowrap; margin-bottom: 0;">
+                <thead>
+                    <tr style="font-size: 0.85rem;">
+                        <th style="padding: 0.4rem;">N° Pedido</th>
+                        <th style="padding: 0.4rem;">Cliente</th>
+                        <th style="padding: 0.4rem;">Email</th>
+                        <th style="padding: 0.4rem;">Estado</th>
+                        <th style="padding: 0.4rem;">Fecha</th>
+                        <th style="padding: 0.4rem;">Total</th>
+                        <th style="padding: 0.4rem;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in pedidos)
+                    {
+                        <tr style="font-size: 0.85rem;">
+                            <td style="padding: 0.4rem;">@p.NumeroPedido</td>
+                            <td style="padding: 0.4rem;">@p.NombreCliente</td>
+                            <td style="padding: 0.4rem;">@p.EmailCliente</td>
+                            <td style="padding: 0.4rem;">
+                                @if (pedidoEnEdicion == p.NumeroPedido)
+                                {
+                                    <select class="form-select form-select-sm" style="padding: 0.25rem; font-size: 0.8rem;" @bind="estadoTemporal">
+                                        <option value="Pendiente">Pendiente</option>
+                                        <option value="Cancelado">Cancelado</option>
+                                        <option value="Completado">Completado</option>
+                                    </select>
+                                }
+                                else
+                                {
+                                    @p.Estado
+                                }
+                            </td>
+                            <td style="padding: 0.4rem;">@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td style="padding: 0.4rem;">@p.Total</td>
+                            <td style="padding: 0.4rem;">
+                                @if (pedidoEnEdicion == p.NumeroPedido)
+                                {
+                                    <button class="btn btn-success btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" @onclick="() => GuardarEstado(p)">Guardar</button>
+                                    <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" @onclick="CancelarEdicion">Cancelar</button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => ModificarCabecera(p)">Modificar</button>
+
+                                    @if (p.Estado.Equals("Pendiente", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => MostrarDetalles(p.NumeroPedido)">Detalles</button>
+                                    }
+                                    else
+                                    {
+                                        <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity:0.6; cursor:not-allowed; margin-right: 0.4rem;" disabled>Detalles</button>
+                                    }
+
+                                    <button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">Eliminar</button>
+
+                                    <input type="number" class="form-control form-control-sm" style="padding: 0.25rem; font-size: 0.8rem; width: 70px; display: inline-block; margin-right: 0.4rem;" min="1"
+                                           placeholder="N° det"
+                                           @bind="numeroDetalleEliminarPorPedido[p.NumeroPedido]" />
+                                    <button class="btn btn-outline-danger btn-sm"
+                                            style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;"
+                                            @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">
+                                        Eliminar Det
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (mostrarFormularioDetalle && detallePedido.Any())
+    {
+        <div class="mt-4">
+            <h4>Detalles del pedido @numeroPedidoSeleccionado</h4>
+            <div style="overflow-x: auto;">
+                <table class="table table-bordered table-sm" style="white-space: nowrap; margin-bottom: 0;">
+                    <thead>
+                        <tr style="font-size: 0.85rem;">
+                            <th style="padding: 0.4rem;">N° Detalle</th>
+                            <th style="padding: 0.4rem;">Producto</th>
+                            <th style="padding: 0.4rem;">Cantidad</th>
+                            <th style="padding: 0.4rem;">Precio Unitario</th>
+                            <th style="padding: 0.4rem;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in detallePedido)
+                        {
+                            <tr style="font-size: 0.85rem;">
+                                <td style="padding: 0.4rem;">@d.NumeroDetalle</td>
+                                <td style="padding: 0.4rem;">@d.Producto</td>
+                                <td style="padding: 0.4rem;">
+                                    <input type="number" class="form-control form-control-sm" style="padding: 0.25rem; font-size: 0.8rem; width: 70px;" min="1"
+                                           @bind="d.Cantidad" @bind:event="oninput"
+                                           @onchange="(_) => RecalcularSubtotal(d)" />
+                                </td>
+                                <td style="padding: 0.4rem;">@d.PrecioUnitario.ToString("0.00")</td>
+                                <td style="padding: 0.4rem;">@d.Subtotal.ToString("0.00")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <button class="btn btn-success btn-sm mt-2" style="padding: 0.5rem 1rem; font-size: 0.9rem;" @onclick="GuardarCambiosDetalle">Guardar cambios</button>
+
+            <div class="mt-3 p-2 border rounded" style="background-color: #f8f9fa;">
+                <h6 style="font-size: 0.9rem; margin-bottom: 0.5rem;">Agregar nuevo detalle</h6>
+                <div style="display: flex; gap: 0.4rem; align-items: center; flex-wrap: wrap;">
+                    <select class="form-select form-select-sm" style="padding: 0.25rem; font-size: 0.8rem; flex: 0 1 300px; max-width: 100%;" @bind="productoSeleccionadoNuevo">
+                        <option value="0">Seleccione un producto</option>
+                        @foreach (var p in productos)
+                        {
+                            var yaSeleccionado = detallePedido.Any(d => d.Producto == p.Nombre);
+                            <option value="@p.Id" disabled="@yaSeleccionado">
+                                @p.Nombre - $@p.Precio
+                                @(yaSeleccionado ? " (ya existe)" : "")
+                            </option>
+                        }
+                    </select>
+                    <input type="number" class="form-control form-control-sm" style="padding: 0.25rem; font-size: 0.8rem; width: 80px;"
+                           min="1" max="1000" @bind="cantidadNueva" placeholder="Cantidad" />
+                    <button class="btn btn-info btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;"
+                            @onclick="AgregarNuevoDetalle">
+                        Agregar Detalle
+                    </button>
+                </div>
+            </div>
+
+            <button class="btn btn-secondary btn-sm mt-2" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" @onclick="CerrarDetalles">Cerrar</button>
+        </div>
+    }
 }
-else if (!pedidos.Any())
+else if (vistaActual == "listar")
 {
-    <p>No se encontraron pedidos.</p>
-}
-else
-{
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Número Pedido</th>
-                <th>Cliente</th>
-                <th>Email</th>
-                <th>Estado</th>
-                <th>Fecha</th>
-                <th>Total</th>
-                <th>Acciones</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var p in pedidos)
-            {
-                <tr>
-                    <td>@p.NumeroPedido</td>
-                    <td>@p.NombreCliente</td>
-                    <td>@p.EmailCliente</td>
-                    <td>
-                        @if (pedidoEnEdicion == p.NumeroPedido)
+    @if (pedidosListar is null)
+    {
+        <p>No hay pedidos cargados.</p>
+    }
+    else if (!pedidosListar.Any())
+    {
+        <p>No se encontraron pedidos.</p>
+    }
+    else
+    {
+        <div style="overflow-x: auto;">
+            <table class="table table-striped table-sm" style="white-space: nowrap; margin-bottom: 0;">
+                <thead>
+                    <tr style="font-size: 0.85rem;">
+                        <th style="padding: 0.4rem;">N° Pedido</th>
+                        <th style="padding: 0.4rem;">Cliente</th>
+                        <th style="padding: 0.4rem;">Email</th>
+                        <th style="padding: 0.4rem;">Estado</th>
+                        <th style="padding: 0.4rem;">Fecha</th>
+                        <th style="padding: 0.4rem;">Total</th>
+                        <th style="padding: 0.4rem;">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var p in pedidosListar)
+                    {
+                        <tr style="font-size: 0.85rem;">
+                            <td style="padding: 0.4rem;">@p.NumeroPedido</td>
+                            <td style="padding: 0.4rem;">@p.NombreCliente</td>
+                            <td style="padding: 0.4rem;">@p.EmailCliente</td>
+                            <td style="padding: 0.4rem;">@p.Estado</td>
+                            <td style="padding: 0.4rem;">@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
+                            <td style="padding: 0.4rem;">@p.Total</td>
+                            <td style="padding: 0.4rem;">
+                                <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => MostrarDetallesListar(p.NumeroPedido)">Ver Detalles</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+
+    @if (mostrarFormularioDetalleListar && detalleListar.Any())
+    {
+        <div class="mt-4">
+            <h4 style="font-size: 1rem;">Detalles del pedido @numeroPedidoListarSeleccionado</h4>
+            <div style="overflow-x: auto;">
+                <table class="table table-bordered table-sm" style="white-space: nowrap; margin-bottom: 0;">
+                    <thead>
+                        <tr style="font-size: 0.85rem;">
+                            <th style="padding: 0.4rem;">N° Detalle</th>
+                            <th style="padding: 0.4rem;">Producto</th>
+                            <th style="padding: 0.4rem;">Cantidad</th>
+                            <th style="padding: 0.4rem;">Precio Unitario</th>
+                            <th style="padding: 0.4rem;">Subtotal</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var d in detalleListar)
                         {
-                            <select class="form-select form-select-sm" @bind="estadoTemporal">
-                                <option value="Pendiente">Pendiente</option>
-                                <option value="Cancelado">Cancelado</option>
-                                <option value="Completado">Completado</option>
-                            </select>
+                            <tr style="font-size: 0.85rem;">
+                                <td style="padding: 0.4rem;">@d.NumeroDetalle</td>
+                                <td style="padding: 0.4rem;">@d.Producto</td>
+                                <td style="padding: 0.4rem;">@d.Cantidad</td>
+                                <td style="padding: 0.4rem;">@d.PrecioUnitario.ToString("0.00")</td>
+                                <td style="padding: 0.4rem;">@d.Subtotal.ToString("0.00")</td>
+                            </tr>
                         }
-                        else
-                        {
-                            @p.Estado
-                        }
-                    </td>
-                    <td>@p.Fecha.ToString("dd/MM/yyyy HH:mm")</td>
-                    <td>@p.Total</td>
-                    <td>
-                        @if (pedidoEnEdicion == p.NumeroPedido)
-                        {
-                            <button class="btn btn-success btn-sm me-2" @onclick="() => GuardarEstado(p)">Guardar</button>
-                            <button class="btn btn-secondary btn-sm" @onclick="CancelarEdicion">Cancelar</button>
-                        }
-                        else
-                        {
-                            <button class="btn btn-primary btn-sm me-2" @onclick="() => ModificarCabecera(p)">
-                                Modificar Cabecera
-                            </button>
+                    </tbody>
+                </table>
+            </div>
 
-                            @if (p.Estado.Equals("Pendiente", StringComparison.OrdinalIgnoreCase))
-                            {
-                                <button class="btn btn-secondary btn-sm me-2" @onclick="() => MostrarDetalles(p.NumeroPedido)">
-                                    Mostrar Detalles
-                                </button>
-                            }
-                            else
-                            {
-                                <button class="btn btn-secondary btn-sm me-2" disabled style="opacity:0.6; cursor:not-allowed;">
-                                    Mostrar Detalles
-                                </button>
-                            }
-
-                            <button class="btn btn-danger btn-sm me-2" @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">
-                                Eliminar Cabecera
-                            </button>
-
-                            <div class="mt-2">
-                                <input type="number" class="form-control form-control-sm" min="1"
-                                       placeholder="N° detalle"
-                                       @bind="numeroDetalleEliminarPorPedido[p.NumeroPedido]" />
-                                <button class="btn btn-outline-danger btn-sm mt-1"
-                                        @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">
-                                    Eliminar Detalle
-                                </button>
-                            </div>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-
-@if (mostrarFormularioDetalle && detallePedido.Any())
-{
-    <h4>Detalles del pedido @numeroPedidoSeleccionado</h4>
-    <table class="table table-bordered">
-        <thead>
-            <tr>
-                <th>N° Detalle</th>
-                <th>Producto</th>
-                <th>Cantidad</th>
-                <th>Precio Unitario</th>
-                <th>Subtotal</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var d in detallePedido)
-            {
-                <tr>
-                    <td>@d.NumeroDetalle</td>
-                    <td>@d.Producto</td>
-                    <td>
-                        <input type="number" class="form-control" min="1"
-                               @bind="d.Cantidad" @bind:event="oninput"
-                               @onchange="(_) => RecalcularSubtotal(d)" />
-                    </td>
-                    <td>@d.PrecioUnitario.ToString("0.00")</td>  
-                    <td>@d.Subtotal.ToString("0.00")</td>      
-                </tr>
-            }
-        </tbody>
-    </table>
-
-    <button class="btn btn-success me-2" @onclick="GuardarCambiosDetalle">Guardar cambios</button>
+            <button class="btn btn-secondary btn-sm mt-2" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" @onclick="CerrarDetallesListar">Cerrar</button>
+        </div>
+    }
 }
 
 @code {
+    // Vista Actualización
     private List<PedidoCabecera> pedidos = new();
     private List<DetallePedido> detallePedido = new();
+    private List<Producto> productos = new();
     private bool mostrarFormularioDetalle = false;
     private string numeroPedidoSeleccionado = string.Empty;
-
-    // 🔧 nuevo: número de detalle separado por pedido
     private Dictionary<string, int> numeroDetalleEliminarPorPedido = new();
-
     private string pedidoEnEdicion = string.Empty;
     private string estadoTemporal = string.Empty;
+    private int productoSeleccionadoNuevo = 0;
+    private int cantidadNueva = 1;
 
-    // --- Cargar pedidos ---
+    // Vista Listar
+    private List<PedidoCabecera> pedidosListar = new();
+    private List<DetallePedido> detalleListar = new();
+    private bool mostrarFormularioDetalleListar = false;
+    private string numeroPedidoListarSeleccionado = string.Empty;
+
+    // Control de vista
+    private string vistaActual = "";
+
+    // --- Cambiar a modo actualización ---
+    private async Task ModoActualizacion()
+    {
+        vistaActual = "actualizacion";
+        await CargarPedidos();
+    }
+
+    // --- Cambiar a modo listar ---
+    private async Task ModoListar()
+    {
+        vistaActual = "listar";
+        await CargarPedidosListar();
+    }
+
+    // --- Cargar pedidos para actualización ---
     private async Task CargarPedidos()
     {
         try
         {
             pedidos = await Http.GetFromJsonAsync<List<PedidoCabecera>>("pedidos/cabeceras") ?? new();
-            // Inicializar los campos de detalle
             numeroDetalleEliminarPorPedido = pedidos.ToDictionary(p => p.NumeroPedido, p => 0);
+            await CargarProductos();
         }
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", $"Error al cargar pedidos: {ex.Message}, la api no esta en funcionamiento");
+        }
+    }
+
+    // --- Cargar pedidos para listar ---
+    private async Task CargarPedidosListar()
+    {
+        try
+        {
+            pedidosListar = await Http.GetFromJsonAsync<List<PedidoCabecera>>("pedidos/cabeceras") ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar pedidos: {ex.Message}, la api no esta en funcionamiento");
+        }
+    }
+
+    // --- Cargar productos ---
+    private async Task CargarProductos()
+    {
+        try
+        {
+            productos = await Http.GetFromJsonAsync<List<Producto>>("productos") ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al cargar productos: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -201,7 +356,7 @@ else
         }
     }
 
-    // --- Mostrar detalles ---
+    // --- Mostrar detalles para edición ---
     private async Task MostrarDetalles(string numeroPedido)
     {
         numeroPedidoSeleccionado = numeroPedido;
@@ -215,6 +370,36 @@ else
         {
             await JS.InvokeVoidAsync("alert", $"Error al obtener detalles: {ex.Message}, la API no esta en funcionamiento");
         }
+    }
+
+    // --- Mostrar detalles para listar (solo lectura) ---
+    private async Task MostrarDetallesListar(string numeroPedido)
+    {
+        numeroPedidoListarSeleccionado = numeroPedido;
+        mostrarFormularioDetalleListar = true;
+
+        try
+        {
+            detalleListar = await Http.GetFromJsonAsync<List<DetallePedido>>($"pedidos/{numeroPedido}/detalles") ?? new();
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al obtener detalles: {ex.Message}, la API no esta en funcionamiento");
+        }
+    }
+
+    // --- Cerrar detalles ---
+    private void CerrarDetalles()
+    {
+        mostrarFormularioDetalle = false;
+        detallePedido.Clear();
+    }
+
+    // --- Cerrar detalles listar ---
+    private void CerrarDetallesListar()
+    {
+        mostrarFormularioDetalleListar = false;
+        detalleListar.Clear();
     }
 
     // --- Recalcular subtotal ---
@@ -261,6 +446,46 @@ else
         catch (Exception ex)
         {
             await JS.InvokeVoidAsync("alert", $"Error al guardar cambios: {ex.Message}, la API no esta en funcionamiento");
+        }
+    }
+
+    // --- Agregar nuevo detalle ---
+    private async Task AgregarNuevoDetalle()
+    {
+        if (productoSeleccionadoNuevo == 0)
+        {
+            await JS.InvokeVoidAsync("alert", "Seleccione un producto.");
+            return;
+        }
+
+        if (cantidadNueva < 1 || cantidadNueva > 1000)
+        {
+            await JS.InvokeVoidAsync("alert", "La cantidad debe ser entre 1 y 1000.");
+            return;
+        }
+
+        try
+        {
+            var nuevoDetalle = new { productoId = productoSeleccionadoNuevo, cantidad = cantidadNueva };
+            var response = await Http.PostAsJsonAsync($"pedidos/{numeroPedidoSeleccionado}/detalles/create", nuevoDetalle);
+
+            if (response.IsSuccessStatusCode)
+            {
+                await JS.InvokeVoidAsync("alert", "Detalle agregado correctamente.");
+                productoSeleccionadoNuevo = 0;
+                cantidadNueva = 1;
+                await MostrarDetalles(numeroPedidoSeleccionado);
+                StateHasChanged();
+            }
+            else
+            {
+                var msg = await response.Content.ReadAsStringAsync();
+                await JS.InvokeVoidAsync("alert", $"Error al agregar detalle: {msg}");
+            }
+        }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}, la API no esta en funcionamiento");
         }
     }
 
@@ -351,5 +576,12 @@ else
         public int Cantidad { get; set; }
         public decimal PrecioUnitario { get; set; }
         public decimal Subtotal { get; set; }
+    }
+
+    public class Producto
+    {
+        public int Id { get; set; }
+        public string Nombre { get; set; } = string.Empty;
+        public decimal Precio { get; set; }
     }
 }
