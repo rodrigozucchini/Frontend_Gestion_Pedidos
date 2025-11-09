@@ -197,7 +197,6 @@ else
         }
     }
 
-    // --- Eliminar Cliente ---
     private async Task EliminarCliente(string email)
     {
         var confirm = await JS.InvokeAsync<bool>("confirm", "¿Desea eliminar este cliente?");
@@ -205,20 +204,28 @@ else
 
         try
         {
-            var response = await Http.DeleteAsync($"clientes/by-email/{email}");
+            // Ruta corregida para coincidir con el backend
+            var response = await Http.DeleteAsync($"clientes/delete-by-email/{email}");
+            var msg = await response.Content.ReadAsStringAsync();
+
             if (!response.IsSuccessStatusCode)
             {
-                var msg = await response.Content.ReadAsStringAsync();
-                await JS.InvokeVoidAsync("alert", $"Error al eliminar cliente: {msg}");
+                if (msg.Contains("no encontrado", StringComparison.OrdinalIgnoreCase))
+                    await JS.InvokeVoidAsync("alert", "El cliente no existe o ya fue eliminado.");
+                else if (msg.Contains("tiene pedidos", StringComparison.OrdinalIgnoreCase))
+                    await JS.InvokeVoidAsync("alert", "No se puede eliminar el cliente porque tiene pedidos asociados.");
+                else
+                    await JS.InvokeVoidAsync("alert", $"Error al eliminar cliente: {msg}");
             }
             else
             {
+                await JS.InvokeVoidAsync("alert", "Cliente eliminado correctamente.");
                 await CargarTodos();
             }
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error al conectar con la API: {ex.Message}, es posible que la API no este en funcionamiento");
+            await JS.InvokeVoidAsync("alert", $"Error al conectar con la API: {ex.Message}. Es posible que la API no esté en funcionamiento.");
         }
     }
 

@@ -2,6 +2,7 @@
 @using System.Net.Http.Json
 @inject HttpClient Http
 @inject IJSRuntime JS
+@using System.Text.Json;
 
 <div class="mb-3">
     <NavLink class="btn btn-secondary me-2" href="/">Volver al Home</NavLink>
@@ -517,46 +518,65 @@ else if (vistaActual == "listar")
         }
     }
 
-    // --- Eliminar detalle ---
-    private async Task ConfirmarEliminarDetalle(string numeroPedido)
+
+private async Task ConfirmarEliminarDetalle(string numeroPedido)
+{
+    if (!numeroDetalleEliminarPorPedido.TryGetValue(numeroPedido, out var numeroDetalle) || numeroDetalle <= 0)
     {
-        if (!numeroDetalleEliminarPorPedido.TryGetValue(numeroPedido, out var numeroDetalle) || numeroDetalle <= 0)
+        await JS.InvokeVoidAsync("alert", "Ingrese un número de detalle válido.");
+        return;
+    }
+
+    if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea eliminar el detalle {numeroDetalle}?"))
+        await EliminarDetalle(numeroPedido, numeroDetalle);
+}
+
+private async Task EliminarDetalle(string numeroPedido, int numeroDetalle)
+{
+    try
+    {
+        var response = await Http.DeleteAsync($"pedidos/{numeroPedido}/detalles/{numeroDetalle}");
+        var contenido = await response.Content.ReadAsStringAsync();
+
+        // Si la API no responde OK, mostrar el contenido textual
+        if (!response.IsSuccessStatusCode)
         {
-            await JS.InvokeVoidAsync("alert", "Ingrese un número de detalle válido.");
+            await JS.InvokeVoidAsync("alert", $"Error HTTP {response.StatusCode}: {contenido}");
             return;
         }
 
-        if (!detallePedido.Any(d => d.NumeroDetalle == numeroDetalle))
+        // Parseo seguro del JSON
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(contenido); }
+        catch
         {
-            await JS.InvokeVoidAsync("alert", $"El detalle {numeroDetalle} no existe en este pedido.");
+            await JS.InvokeVoidAsync("alert", $"Respuesta inesperada: {contenido}");
             return;
         }
 
-        if (await JS.InvokeAsync<bool>("confirm", $"¿Seguro que desea eliminar el detalle {numeroDetalle}?"))
-        {
-            await EliminarDetalle(numeroPedido, numeroDetalle);
-            StateHasChanged();
-        }
-    }
+        var root = doc.RootElement;
 
-    private async Task EliminarDetalle(string numeroPedido, int numeroDetalle)
-    {
-        try
+        bool error = root.TryGetProperty("error", out var err) && err.GetBoolean();
+        string mensaje = root.TryGetProperty("message", out var msg) ? msg.GetString() : "Sin mensaje del servidor.";
+
+        if (error)
         {
-            var response = await Http.DeleteAsync($"pedidos/{numeroPedido}/detalles/{numeroDetalle}");
-            if (response.IsSuccessStatusCode)
-            {
-                detallePedido.RemoveAll(d => d.NumeroDetalle == numeroDetalle);
-                await CargarPedidos();
-                await MostrarDetalles(numeroPedido);
-                await JS.InvokeVoidAsync("alert", "Detalle eliminado correctamente.");
-            }
+            await JS.InvokeVoidAsync("alert", mensaje);
+            return; // no eliminar localmente
         }
-        catch (Exception ex)
-        {
-            await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}, la API no esta en funcionamiento");
-        }
+
+        // Si no hubo error, proceder
+        detallePedido.RemoveAll(d => d.NumeroDetalle == numeroDetalle);
+        await CargarPedidos();
+        await MostrarDetalles(numeroPedido);
+        await JS.InvokeVoidAsync("alert", mensaje);
     }
+    catch (Exception ex)
+    {
+        await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}");
+    }
+}
+
 
     // --- Clases ---
     public class PedidoCabecera

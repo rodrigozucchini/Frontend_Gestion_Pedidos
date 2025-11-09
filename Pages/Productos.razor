@@ -264,20 +264,34 @@ else
         try
         {
             var response = await Http.DeleteAsync($"productos/{id}");
+            var msg = await response.Content.ReadAsStringAsync();
 
             if (response.IsSuccessStatusCode)
             {
+                await JS.InvokeVoidAsync("alert", "Producto eliminado correctamente.");
                 await CargarProductos();
             }
             else
             {
-                var errorMsg = await response.Content.ReadAsStringAsync();
-                await JS.InvokeVoidAsync("alert", $"Error al eliminar producto: {errorMsg}");
+                try
+                {
+                    // Intenta leer el campo "error" del JSON
+                    using var doc = JsonDocument.Parse(msg);
+                    if (doc.RootElement.TryGetProperty("error", out var errorProp))
+                        msg = errorProp.GetString();
+                }
+                catch
+                {
+                    // Si no es JSON válido, se usa el mensaje tal cual
+                }
+
+                await JS.InvokeVoidAsync("alert", msg);
             }
         }
         catch (Exception ex)
         {
-            await JS.InvokeVoidAsync("alert", $"Error: {ex.Message}, esto quiere decir que la API no esta en funcionamiento");
+            await JS.InvokeVoidAsync("alert", $"Error al conectar con la API: {ex.Message}. Es posible que la API no esté en funcionamiento.");
         }
     }
+
 }
