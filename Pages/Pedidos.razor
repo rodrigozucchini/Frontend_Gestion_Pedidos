@@ -552,51 +552,71 @@ private async Task ConfirmarEliminarDetalle(string numeroPedido)
         await EliminarDetalle(numeroPedido, numeroDetalle);
 }
 
-private async Task EliminarDetalle(string numeroPedido, int numeroDetalle)
-{
-    try
+    private async Task EliminarDetalle(string numeroPedido, int numeroDetalle)
     {
-        var response = await Http.DeleteAsync($"pedidos/{numeroPedido}/detalles/{numeroDetalle}");
-        var contenido = await response.Content.ReadAsStringAsync();
-
-        // Si la API no responde OK, mostrar el contenido textual
-        if (!response.IsSuccessStatusCode)
+        try
         {
-            await JS.InvokeVoidAsync("alert", $"Error HTTP {response.StatusCode}: {contenido}");
-            return;
-        }
+            var response = await Http.DeleteAsync($"pedidos/{numeroPedido}/detalles/{numeroDetalle}");
+            var contenido = await response.Content.ReadAsStringAsync();
 
-        // Parseo seguro del JSON
-        JsonDocument doc;
-        try { doc = JsonDocument.Parse(contenido); }
-        catch
-        {
-            await JS.InvokeVoidAsync("alert", $"Respuesta inesperada: {contenido}");
-            return;
-        }
+            // ERROR HTTP → PERO si el pedido se eliminó no es un error real
+            if (!response.IsSuccessStatusCode)
+            {
+                // Si la API dice que el pedido fue eliminado → NO es error
+                if (response.StatusCode == System.Net.HttpStatusCode.NotFound &&
+                    contenido.Contains("pedido eliminado", StringComparison.OrdinalIgnoreCase))
+                {
+                    await JS.InvokeVoidAsync("alert", "El detalle era el último. El pedido completo fue eliminado.");
+                    await CargarPedidos();
+                    detallePedido.Clear(); // limpiar tabla
+                    return;
+                }
 
-        var root = doc.RootElement;
+                await JS.InvokeVoidAsync("alert", $"Error HTTP {response.StatusCode}: {contenido}");
+                return;
+            }
 
-        bool error = root.TryGetProperty("error", out var err) && err.GetBoolean();
-        string mensaje = root.TryGetProperty("message", out var msg) ? msg.GetString() : "Sin mensaje del servidor.";
+            // Intentar parsear JSON
+            JsonDocument doc;
+            try { doc = JsonDocument.Parse(contenido); }
+            catch
+            {
+                await JS.InvokeVoidAsync("alert", $"Respuesta inesperada: {contenido}");
+                return;
+            }
 
-        if (error)
-        {
+            var root = doc.RootElement;
+
+            bool pedidoEliminado =
+                root.TryGetProperty("pedidoCancelado", out var pedElim) &&
+                pedElim.GetBoolean();
+
+            string mensaje = root.TryGetProperty("message", out var msg)
+                ? msg.GetString()
+                : "Operación realizada.";
+
+            if (pedidoEliminado)
+            {
+                await JS.InvokeVoidAsync("alert", mensaje);
+                await CargarPedidos();
+                detallePedido.Clear();
+                return;
+            }
+
+            // Caso normal → se eliminó solo el detalle
+            detallePedido.RemoveAll(d => d.NumeroDetalle == numeroDetalle);
+
+            await CargarPedidos();
+            await MostrarDetalles(numeroPedido);
+
             await JS.InvokeVoidAsync("alert", mensaje);
-            return; // no eliminar localmente
         }
+        catch (Exception ex)
+        {
+            await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}");
+        }
+    }
 
-        // Si no hubo error, proceder
-        detallePedido.RemoveAll(d => d.NumeroDetalle == numeroDetalle);
-        await CargarPedidos();
-        await MostrarDetalles(numeroPedido);
-        await JS.InvokeVoidAsync("alert", mensaje);
-    }
-    catch (Exception ex)
-    {
-        await JS.InvokeVoidAsync("alert", $"Error al eliminar detalle: {ex.Message}");
-    }
-}
 
 
     // --- Clases ---
