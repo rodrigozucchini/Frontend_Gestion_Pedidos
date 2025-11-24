@@ -177,7 +177,7 @@ else
 
             HttpResponseMessage response;
             if (editarEmail != null)
-                response = await Http.PutAsJsonAsync($"clientes/by-email/{editarEmail}", cliente);
+                response = await Http.PutAsJsonAsync($"clientes/update-by-email/{editarEmail}", cliente);
             else
                 response = await Http.PostAsJsonAsync("clientes/create", cliente);
 
