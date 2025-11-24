@@ -72,28 +72,49 @@
                                 }
                                 else
                                 {
-                                    <button class="btn btn-primary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => ModificarCabecera(p)">Modificar</button>
-
                                     @if (p.Estado.Equals("Pendiente", StringComparison.OrdinalIgnoreCase))
                                     {
-                                        <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => MostrarDetalles(p.NumeroPedido)">Detalles</button>
+                                        <!-- SOLO SI ESTÁ PENDIENTE PUEDE EDITAR -->
+
+                                        <button class="btn btn-primary btn-sm"
+                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;"
+                                                @onclick="() => ModificarCabecera(p)">
+                                            Modificar
+                                        </button>
+
+                                        <button class="btn btn-secondary btn-sm"
+                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;"
+                                                @onclick="() => MostrarDetalles(p.NumeroPedido)">
+                                            Detalles
+                                        </button>
+
+                                        <button class="btn btn-danger btn-sm"
+                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;"
+                                                @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">
+                                            Eliminar
+                                        </button>
+
+                                        <input type="number" class="form-control form-control-sm"
+                                               style="padding: 0.25rem; font-size: 0.8rem; width: 70px; display: inline-block; margin-right: 0.4rem;"
+                                               min="1" placeholder="N° det"
+                                               @bind="numeroDetalleEliminarPorPedido[p.NumeroPedido]" />
+
+                                        <button class="btn btn-outline-danger btn-sm"
+                                                style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;"
+                                                @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">
+                                            Eliminar Det
+                                        </button>
                                     }
                                     else
                                     {
-                                        <button class="btn btn-secondary btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; opacity:0.6; cursor:not-allowed; margin-right: 0.4rem;" disabled>Detalles</button>
+                                        <!-- SI ESTA CANCELADO O COMPLETADO NO HAY NINGÚN BOTÓN EDITABLE -->
+
+                                        <span style="color: #888; font-size: 0.75rem;">
+                                            Sin acciones (pedido cerrado)
+                                        </span>
                                     }
-
-                                    <button class="btn btn-danger btn-sm" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; margin-right: 0.4rem;" @onclick="() => ConfirmarEliminarCabecera(p.NumeroPedido)">Eliminar</button>
-
-                                    <input type="number" class="form-control form-control-sm" style="padding: 0.25rem; font-size: 0.8rem; width: 70px; display: inline-block; margin-right: 0.4rem;" min="1"
-                                           placeholder="N° det"
-                                           @bind="numeroDetalleEliminarPorPedido[p.NumeroPedido]" />
-                                    <button class="btn btn-outline-danger btn-sm"
-                                            style="padding: 0.25rem 0.5rem; font-size: 0.75rem; white-space: nowrap;"
-                                            @onclick="() => ConfirmarEliminarDetalle(p.NumeroPedido)">
-                                        Eliminar Det
-                                    </button>
                                 }
+
                             </td>
                         </tr>
                     }
